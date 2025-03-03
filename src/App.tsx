@@ -99,46 +99,61 @@ function App() {
     formData.append("transcribe", transcribe.toString());
 
     try {
-      console.log("Uploading file:", file.name);
+      console.log("Uploading file:", file.name, "Size:", file.size, "Type:", file.type);
       
       // Set a timeout to prevent hanging requests
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
       
       const response = await fetch("/api/analyze", {
         method: "POST",
         body: formData,
-        signal: controller.signal
+        signal: controller.signal,
+        // Disable caching to ensure fresh responses
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
       });
       
       clearTimeout(timeoutId);
-
+      
+      console.log("Response status:", response.status);
+      
       // Even if the response has an error status, try to parse it
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+        console.log("Response data received");
+      } catch (jsonError) {
+        console.error("Failed to parse response as JSON:", jsonError);
+        throw new Error("Server returned invalid JSON. Please try again.");
+      }
       
       if (!response.ok) {
         // If server returned an error with proper format
-        const errorMessage = data.error || "Failed to analyze audio";
+        const errorMessage = data?.error || `Server error: ${response.status}`;
         console.error("Server returned error:", errorMessage);
         throw new Error(errorMessage);
       }
 
-      console.log("Response received successfully");
+      console.log("Response processed successfully");
       
       // Check if we have the expected data structure
       if (data && data.analysis) {
         setResult(data);
         setActiveTab("results");
       } else {
-        throw new Error("Invalid response format from server");
+        console.error("Invalid response format:", data);
+        throw new Error("Server returned incomplete data. Please try again.");
       }
-    } catch (err) {
-      console.error("Error:", err);
+    } catch (err: any) {
+      console.error("Error details:", err);
       
       if (err.name === 'AbortError') {
-        setError("Request timed out. Please try again with a smaller file.");
+        setError("Request timed out. Please try again with a smaller file or check your internet connection.");
       } else {
-        setError(err instanceof Error ? err.message : "Failed to analyze audio");
+        setError(err instanceof Error ? err.message : "Failed to analyze audio. Please try again.");
       }
       
       // For debugging only

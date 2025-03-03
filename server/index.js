@@ -68,6 +68,8 @@ if (!fs.existsSync(uploadDir)) {
 
 // Analyze audio call quality
 app.post('/api/analyze', (req, res) => {
+  console.log('Received /api/analyze request');
+  
   upload.single('audioFile')(req, res, async (err) => {
     if (err) {
       console.error('Upload error:', err);
@@ -75,6 +77,7 @@ app.post('/api/analyze', (req, res) => {
     }
     
     if (!req.file) {
+      console.error('No file in request');
       return res.status(400).json({ error: 'No audio file provided' });
     }
 
@@ -84,6 +87,8 @@ app.post('/api/analyze', (req, res) => {
       
       console.log('Processing file:', req.file.originalname);
       console.log('File path:', filePath);
+      console.log('File size:', req.file.size);
+      console.log('File type:', req.file.mimetype);
       console.log('Should transcribe:', shouldTranscribe);
       
       // Create a mock transcription if requested (for demo)
@@ -101,93 +106,99 @@ app.post('/api/analyze', (req, res) => {
           console.log('Transcription generated successfully');
         } catch (transcriptionError) {
           console.error('Transcription error:', transcriptionError);
-          transcription = "An error occurred while generating the transcription. This is a fallback transcript of a call between a customer and support agent.";
+          transcription = "An error occurred while generating the transcription. This is a fallback transcript of a call between a customer and support agent discussing internet connectivity issues.";
         }
       }
       
       // Use Gemini API to analyze the call quality
-      console.log('Analyzing call quality...');
-      const geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
-      
-      const analysisPrompt = `
-      You are an AI specialist in analyzing call center audio quality. 
-      Based on an audio file with the following characteristics:
-      - File name: ${req.file.originalname}
-      - File size: ${req.file.size} bytes
-      - File type: ${req.file.mimetype}
-      
-      Create a detailed call quality analysis report with the following components:
-      1. Overall call quality rating (Good, Moderate, or Poor)
-      2. Noise level assessment (Low, Medium, or High)
-      3. Clarity rating (High, Medium, or Low)
-      4. List of 3-4 specific issues that might be present in a call of this quality
-      5. List of 3-4 recommendations for improving call quality
-      
-      Format the response as a JSON object with the following structure:
-      {
-        "callQuality": "string",
-        "noiseLevel": "string",
-        "clarity": "string",
-        "issues": ["string", "string", ...],
-        "recommendations": ["string", "string", ...]
-      }
-      `;
-      
-      const analysisResult = await geminiModel.generateContent({
-        contents: [{ role: 'user', parts: [{ text: analysisPrompt }]}]
-      });
-      
-      const analysisText = analysisResult.response.text();
-      console.log('Analysis text received:', analysisText.substring(0, 100) + '...');
-      
-      // Parse the JSON from the response, handling potential format issues
-      let analysisJson;
+      console.log('Analyzing call quality with Gemini API...');
       try {
-        // Handle cases where there might be markdown code blocks in the response
-        const jsonMatch = analysisText.match(/```json\s*([\s\S]*?)\s*```/) || 
-                         analysisText.match(/```\s*([\s\S]*?)\s*```/) ||
-                         [null, analysisText];
+        const geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
         
-        const cleanedJson = jsonMatch[1].trim();
-        analysisJson = JSON.parse(cleanedJson);
-      } catch (jsonError) {
-        console.error('JSON parsing error:', jsonError);
-        // Provide fallback analysis if JSON parsing fails
-        analysisJson = {
-          "callQuality": "Moderate",
-          "noiseLevel": "Medium",
-          "clarity": "Medium",
-          "issues": [
-            "Background noise detected",
-            "Occasional voice distortion",
-            "Some parts of the conversation are unclear"
-          ],
-          "recommendations": [
-            "Use noise cancellation technology",
-            "Ensure proper microphone placement",
-            "Speak clearly and at a moderate pace",
-            "Consider upgrading call equipment"
-          ]
-        };
-      }
-    
-    // Clean up the uploaded file
-      try {
-        if (fs.existsSync(filePath)) {
-          fs.unlinkSync(filePath);
-          console.log('File cleaned up successfully');
+        const analysisPrompt = `
+        You are an AI specialist in analyzing call center audio quality. 
+        Based on an audio file with the following characteristics:
+        - File name: ${req.file.originalname}
+        - File size: ${req.file.size} bytes
+        - File type: ${req.file.mimetype}
+        
+        Create a detailed call quality analysis report with the following components:
+        1. Overall call quality rating (Good, Moderate, or Poor)
+        2. Noise level assessment (Low, Medium, or High)
+        3. Clarity rating (High, Medium, or Low)
+        4. List of 3-4 specific issues that might be present in a call of this quality
+        5. List of 3-4 recommendations for improving call quality
+        
+        Format the response as a JSON object with the following structure:
+        {
+          "callQuality": "string",
+          "noiseLevel": "string",
+          "clarity": "string",
+          "issues": ["string", "string", ...],
+          "recommendations": ["string", "string", ...]
         }
-      } catch (cleanupError) {
-        console.error('Error cleaning up file:', cleanupError);
-        // Continue anyway, this shouldn't stop the response
+        `;
+        
+        const analysisResult = await geminiModel.generateContent({
+          contents: [{ role: 'user', parts: [{ text: analysisPrompt }]}]
+        });
+        
+        const analysisText = analysisResult.response.text();
+        console.log('Analysis text received from Gemini');
+        
+        // Parse the JSON from the response, handling potential format issues
+        let analysisJson;
+        try {
+          // Handle cases where there might be markdown code blocks in the response
+          const jsonMatch = analysisText.match(/```json\s*([\s\S]*?)\s*```/) || 
+                           analysisText.match(/```\s*([\s\S]*?)\s*```/) ||
+                           [null, analysisText];
+          
+          const cleanedJson = jsonMatch[1].trim();
+          analysisJson = JSON.parse(cleanedJson);
+          console.log('Successfully parsed JSON from Gemini response');
+        } catch (jsonError) {
+          console.error('JSON parsing error:', jsonError);
+          // Provide fallback analysis if JSON parsing fails
+          analysisJson = {
+            "callQuality": "Moderate",
+            "noiseLevel": "Medium",
+            "clarity": "Medium",
+            "issues": [
+              "Background noise detected",
+              "Occasional voice distortion",
+              "Some parts of the conversation are unclear"
+            ],
+            "recommendations": [
+              "Use noise cancellation technology",
+              "Ensure proper microphone placement",
+              "Speak clearly and at a moderate pace",
+              "Consider upgrading call equipment"
+            ]
+          };
+        }
+        
+        // Clean up the uploaded file
+        try {
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+            console.log('File cleaned up successfully');
+          }
+        } catch (cleanupError) {
+          console.error('Error cleaning up file:', cleanupError);
+          // Continue anyway, this shouldn't stop the response
+        }
+        
+        // Return the analysis results
+        console.log('Sending successful response with analysis');
+        return res.status(200).json({
+          transcription: transcription,
+          analysis: analysisJson
+        });
+      } catch (geminiError) {
+        console.error('Gemini API error:', geminiError);
+        throw new Error(`Gemini API error: ${geminiError.message}`);
       }
-      
-      // Return the analysis results
-      console.log('Sending successful response');
-      return res.status(200).json({
-        transcription: transcription,
-        analysis: analysisJson
-      });
     } catch (error) {
       console.error('Error processing audio file:', error);
       
@@ -201,8 +212,9 @@ app.post('/api/analyze', (req, res) => {
       }
       
       // Send a more user-friendly error response with fallback data
+      console.log('Sending fallback response due to error');
       return res.status(200).json({
-        transcription: "Error generating transcription. This is a fallback transcript.",
+        transcription: "Error generating transcription. This is a fallback transcript for demonstration purposes.",
         analysis: {
           "callQuality": "Moderate",
           "noiseLevel": "Medium",
