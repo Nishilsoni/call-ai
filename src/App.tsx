@@ -99,34 +99,54 @@ function App() {
     formData.append("transcribe", transcribe.toString());
 
     try {
+      console.log("Uploading file:", file.name);
+      
+      // Set a timeout to prevent hanging requests
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      
       const response = await fetch("/api/analyze", {
         method: "POST",
         body: formData,
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
 
-      let errorMessage = "Failed to analyze audio";
-
+      // Even if the response has an error status, try to parse it
+      const data = await response.json();
+      
       if (!response.ok) {
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.error || errorMessage;
-        } catch (parseError) {
-          console.error("Error parsing error response:", parseError);
-        }
+        // If server returned an error with proper format
+        const errorMessage = data.error || "Failed to analyze audio";
+        console.error("Server returned error:", errorMessage);
         throw new Error(errorMessage);
       }
 
-      try {
-        const data = await response.json();
+      console.log("Response received successfully");
+      
+      // Check if we have the expected data structure
+      if (data && data.analysis) {
         setResult(data);
         setActiveTab("results");
-      } catch (parseError) {
-        console.error("Error parsing success response:", parseError);
-        throw new Error("Failed to parse server response");
+      } else {
+        throw new Error("Invalid response format from server");
       }
     } catch (err) {
       console.error("Error:", err);
-      setError(err instanceof Error ? err.message : "Failed to analyze audio");
+      
+      if (err.name === 'AbortError') {
+        setError("Request timed out. Please try again with a smaller file.");
+      } else {
+        setError(err instanceof Error ? err.message : "Failed to analyze audio");
+      }
+      
+      // For debugging only
+      console.log("File info:", file ? {
+        name: file.name,
+        type: file.type,
+        size: file.size
+      } : 'No file');
     } finally {
       setIsLoading(false);
     }
