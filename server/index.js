@@ -50,18 +50,24 @@ if (!fs.existsSync(uploadDir)) {
 }
 
 // Analyze audio call quality
-app.post('/api/analyze', upload.single('audioFile'), async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: 'No audio file provided' });
-  }
-
-  try {
-    const filePath = req.file.path;
-    const shouldTranscribe = req.body.transcribe === 'true';
+app.post('/api/analyze', (req, res) => {
+  upload.single('audioFile')(req, res, async (err) => {
+    if (err) {
+      console.error('Upload error:', err);
+      return res.status(400).json({ error: err.message });
+    }
     
-    // Read the audio file as base64
-    const audioData = fs.readFileSync(filePath);
-    const audioBase64 = audioData.toString('base64');
+    if (!req.file) {
+      return res.status(400).json({ error: 'No audio file provided' });
+    }
+
+    try {
+      const filePath = req.file.path;
+      const shouldTranscribe = req.body.transcribe === 'true';
+      
+      // Read the audio file as base64
+      const audioData = fs.readFileSync(filePath);
+      const audioBase64 = audioData.toString('base64');
     
     // Create a mock transcription if requested (for demo)
     let transcription = null;
@@ -111,7 +117,14 @@ app.post('/api/analyze', upload.single('audioFile'), async (req, res) => {
     const analysisJson = JSON.parse(analysisText);
     
     // Clean up the uploaded file
-    fs.unlinkSync(filePath);
+    try {
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    } catch (cleanupError) {
+      console.error('Error cleaning up file:', cleanupError);
+      // Continue anyway, this shouldn't stop the response
+    }
     
     // Return the analysis results
     return res.status(200).json({
@@ -120,8 +133,19 @@ app.post('/api/analyze', upload.single('audioFile'), async (req, res) => {
     });
   } catch (error) {
     console.error('Error processing audio file:', error);
+    
+    // Clean up file if it exists despite the error
+    try {
+      if (req.file && req.file.path && fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
+    } catch (cleanupError) {
+      console.error('Error cleaning up file after processing error:', cleanupError);
+    }
+    
     return res.status(500).json({ error: 'Failed to process audio file: ' + error.message });
   }
+  });
 });
 
 // In development mode, don't try to serve static files from dist

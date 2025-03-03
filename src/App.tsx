@@ -21,14 +21,14 @@ function App() {
         setFile(null);
         return;
       }
-      
+
       // Check file size (limit to 10MB)
       if (selectedFile.size > 10 * 1024 * 1024) {
         setError('File size exceeds 10MB limit');
         setFile(null);
         return;
       }
-      
+
       setFile(selectedFile);
       setError(null);
       setResult(null);
@@ -48,20 +48,20 @@ function App() {
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    
+
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const droppedFile = e.dataTransfer.files[0];
-      
+
       if (!droppedFile.type.startsWith('audio/')) {
         setError('Please upload an audio file (MP3, WAV, etc.)');
         return;
       }
-      
+
       if (droppedFile.size > 10 * 1024 * 1024) {
         setError('File size exceeds 10MB limit');
         return;
       }
-      
+
       setFile(droppedFile);
       setError(null);
       setResult(null);
@@ -73,46 +73,61 @@ function App() {
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
+    e.preventDefault();
 
-  if (!file) {
-    setError('Please select an audio file');
-    return;
-  }
-
-  setIsLoading(true);
-  setError(null);
-
-  const formData = new FormData();
-  formData.append('audioFile', file);
-  formData.append('transcribe', transcribe.toString());
-
-  try {
-    const response = await fetch('/api/analyze', {
-      method: 'POST',
-      body: formData,
-    });
-
-    if (!response.ok) {
-      throw new Error(`Error: ${response.status}`);
+    if (!file) {
+      setError('Please select an audio file');
+      return;
     }
 
-    const data = await response.json();
-    setResult(data);
-    setActiveTab('results');
-  } catch (err) {
-    setError(err instanceof Error ? err.message : 'An unknown error occurred');
-  } finally {
-    setIsLoading(false);
-  }
-};
+    setIsLoading(true);
+    setError(null);
+    setResult(null);
+
+    const formData = new FormData();
+    formData.append('audioFile', file);
+    formData.append('transcribe', transcribe.toString());
+
+    try {
+      const response = await fetch('/api/analyze', {
+        method: 'POST',
+        body: formData,
+      });
+
+      let errorMessage = 'Failed to analyze audio';
+
+      if (!response.ok) {
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch (parseError) {
+          console.error('Error parsing error response:', parseError);
+        }
+        throw new Error(errorMessage);
+      }
+
+      try {
+        const data = await response.json();
+        setResult(data);
+        setActiveTab('results');
+      } catch (parseError) {
+        console.error('Error parsing success response:', parseError);
+        throw new Error('Failed to parse server response');
+      }
+    } catch (err) {
+      console.error('Error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to analyze audio');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-indigo-100 perspective">
       <div className="stars"></div>
       <div className="twinkling"></div>
-      
+
       <header className="bg-white/90 backdrop-blur-md shadow-sm sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
@@ -148,18 +163,18 @@ function App() {
                 </button>
               </div>
             )}
-            
+
             <div className="p-8">
               {activeTab === 'upload' && (
                 <>
                   <h2 className="text-2xl font-semibold text-gray-800 mb-6 fade-in">Analyze Your Call Quality</h2>
-                  
+
                   <form onSubmit={handleSubmit}>
                     <div className="mb-6">
                       <label className="block text-gray-700 text-sm font-medium mb-2">
                         Upload Audio File
                       </label>
-                      
+
                       <div 
                         className={`relative border-2 border-dashed rounded-lg p-6 text-center transition-all duration-300 ${isDragging ? 'border-indigo-500 bg-indigo-50' : file ? 'border-green-300 bg-green-50' : 'border-gray-300 hover:border-indigo-300'}`}
                         onDragOver={handleDragOver}
@@ -191,12 +206,12 @@ function App() {
                           accept="audio/*"
                         />
                       </div>
-                      
+
                       {error && (
                         <p className="mt-2 text-sm text-red-600 error-message">{error}</p>
                       )}
                     </div>
-                    
+
                     <div className="mb-6">
                       <div className="flex items-center">
                         <div className="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
@@ -218,7 +233,7 @@ function App() {
                         </label>
                       </div>
                     </div>
-                    
+
                     <button
                       type="submit"
                       disabled={!file || isLoading}
@@ -236,11 +251,11 @@ function App() {
                   </form>
                 </>
               )}
-              
+
               {activeTab === 'results' && result && (
                 <div className="fade-in">
                   <h3 className="text-xl font-semibold text-gray-800 mb-4">Analysis Results</h3>
-                  
+
                   <div className="space-y-6">
                     {result.transcription && (
                       <div className="bg-gray-50 p-4 rounded-lg shadow-inner slide-in-right">
@@ -253,10 +268,10 @@ function App() {
                         </p>
                       </div>
                     )}
-                    
+
                     <div className="slide-in-left">
                       <h4 className="font-medium text-gray-900 mb-2">Call Quality Analysis</h4>
-                      
+
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
                         <div className="bg-gradient-to-br from-blue-50 to-indigo-100 p-4 rounded-lg shadow-sm hover:shadow-md transition-all duration-300 metric-card">
                           <div className="flex items-center justify-between">
@@ -289,7 +304,7 @@ function App() {
                           </div>
                         </div>
                       </div>
-                      
+
                       <div className="space-y-4">
                         <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-all duration-300 slide-up">
                           <h5 className="text-sm font-medium text-gray-900 mb-2 flex items-center">
@@ -307,7 +322,7 @@ function App() {
                             ))}
                           </ul>
                         </div>
-                        
+
                         <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-all duration-300 slide-up">
                           <h5 className="text-sm font-medium text-gray-900 mb-2 flex items-center">
                             <span className="h-2 w-2 bg-green-500 rounded-full mr-2"></span>
@@ -329,7 +344,7 @@ function App() {
               )}
             </div>
           </div>
-          
+
           <div className="mt-8 text-center text-sm text-gray-500">
             <p>© 2025 Kalam Academy, Ranchi. Recognized by MeitY.</p>
             <p className="mt-1">This application uses Grok AI for call quality analysis.</p>
