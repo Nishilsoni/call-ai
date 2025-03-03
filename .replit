@@ -14,6 +14,11 @@ externalPort = 80
 [[ports]]
 localPort = 5173
 
+[[ports]]
+localPort = 5175
+externalPort = 3000
+exposeLocalhost = true
+
 [workflows]
 runButton = "Run"
 
