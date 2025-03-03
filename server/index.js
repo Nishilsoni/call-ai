@@ -150,11 +150,29 @@ app.post('/api/analyze', (req, res) => {
         let analysisJson;
         try {
           // Handle cases where there might be markdown code blocks in the response
-          const jsonMatch = analysisText.match(/```json\s*([\s\S]*?)\s*```/) || 
-                           analysisText.match(/```\s*([\s\S]*?)\s*```/) ||
-                           [null, analysisText];
+          let cleanedJson = analysisText;
           
-          const cleanedJson = jsonMatch[1].trim();
+          // Remove markdown code blocks if present
+          if (analysisText.includes('```')) {
+            // Try to extract content from code blocks
+            const jsonMatch = analysisText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+            if (jsonMatch && jsonMatch[1]) {
+              cleanedJson = jsonMatch[1].trim();
+            } else {
+              // If regexp fails, manually remove the code block markers
+              cleanedJson = analysisText.replace(/```json/g, '').replace(/```/g, '').trim();
+            }
+          }
+          
+          // Ensure we have valid JSON by trying to find a JSON object
+          if (cleanedJson.indexOf('{') >= 0) {
+            cleanedJson = cleanedJson.substring(cleanedJson.indexOf('{'));
+            if (cleanedJson.lastIndexOf('}') >= 0) {
+              cleanedJson = cleanedJson.substring(0, cleanedJson.lastIndexOf('}') + 1);
+            }
+          }
+          
+          console.log('Attempting to parse:', cleanedJson);
           analysisJson = JSON.parse(cleanedJson);
           console.log('Successfully parsed JSON from Gemini response');
         } catch (jsonError) {
