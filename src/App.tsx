@@ -100,11 +100,11 @@ function App() {
 
     try {
       console.log("Uploading file:", file.name, "Size:", file.size, "Type:", file.type);
-      
+
       // Set a timeout to prevent hanging requests
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
-      
+
       const response = await fetch("/api/analyze", {
         method: "POST",
         body: formData,
@@ -115,30 +115,34 @@ function App() {
           'Pragma': 'no-cache'
         }
       });
-      
+
       clearTimeout(timeoutId);
-      
+
       console.log("Response status:", response.status);
-      
-      // Even if the response has an error status, try to parse it
+
+      // Always log the raw response for debugging
+      const responseText = await response.text();
+      console.log("Raw response:", responseText);
+
+      // Try parsing as JSON, but don't throw if it fails
       let data;
       try {
-        data = await response.json();
+        data = JSON.parse(responseText);
         console.log("Response data received");
       } catch (jsonError) {
         console.error("Failed to parse response as JSON:", jsonError);
         throw new Error("Server returned invalid JSON. Please try again.");
       }
-      
-      if (!response.ok) {
-        // If server returned an error with proper format
+
+      if (!response.ok && response.status !== 200) {
+        // If server returned an error status code
         const errorMessage = data?.error || `Server error: ${response.status}`;
         console.error("Server returned error:", errorMessage);
         throw new Error(errorMessage);
       }
 
       console.log("Response processed successfully");
-      
+
       // Check if we have the expected data structure
       if (data && data.analysis) {
         setResult(data);
@@ -149,27 +153,27 @@ function App() {
       }
     } catch (err: any) {
       console.error("Error details:", err);
-      
+
       if (err.name === 'AbortError') {
         setError("Request timed out. Please try again with a smaller file or check your internet connection.");
       } else {
         // Provide more detailed error information including the server error if available
         let errorMessage = "Failed to analyze audio. Please try again.";
-        
+
         if (err.message && err.message.includes("Server returned error:")) {
           errorMessage = err.message;
         } else if (err instanceof Error) {
           errorMessage = err.message;
         }
-        
+
         setError(errorMessage);
-        
+
         // Log server error details if available
         if (err.serverError) {
           console.error("Server error details:", err.serverError);
         }
       }
-      
+
       // Log file info for debugging
       console.log("File info:", file ? {
         name: file.name,
