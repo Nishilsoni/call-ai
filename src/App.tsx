@@ -82,56 +82,95 @@ function App() {
     fileInputRef.current?.click();
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+          const handleSubmit = async (e: React.FormEvent) => {
+            e.preventDefault();
 
-    if (!file) {
-      setError("Please select an audio file");
-      return;
-    }
+            if (!file) {
+              setError("Please select an audio file");
+              return;
+            }
 
-    setIsLoading(true);
-    setError(null);
-    setResult(null);
+            setIsLoading(true);
+            setError(null);
+            setResult(null);
 
-    const formData = new FormData();
-    formData.append("audioFile", file);
-    formData.append("transcribe", transcribe.toString());
+            const formData = new FormData();
+            formData.append("audioFile", file);
+            formData.append("transcribe", transcribe.toString());
 
-    try {
-      console.log("Uploading file:", file.name, "Size:", file.size, "Type:", file.type);
+            try {
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 60000);
 
-      // Set a timeout to prevent hanging requests
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+              const response = await fetch("/api/analyze", {
+                method: "POST",
+                body: formData,
+                signal: controller.signal,
+                headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
+              });
 
-      const response = await fetch("/api/analyze", {
-        method: "POST",
-        body: formData,
-        signal: controller.signal,
-        // Disable caching to ensure fresh responses
-        headers: {
-          'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache'
+              clearTimeout(timeoutId);
+              const responseText = await response.text();
+
+              // Clean response text from Markdown formatting
+              let cleanedResponse = responseText
+                .replace(/```json/g, '')
+                .replace(/```/g, '')
+                .trim();
+
+              let data;
+              try {
+                data = JSON.parse(cleanedResponse);
+              } catch (jsonError) {
+                // Handle invalid JSON format
+                if (responseText.includes("Failed to process audio file")) {
+                  data = createFallbackData(responseText);
+                } else {
+                  throw new Error(`Server returned invalid response: ${cleanedResponse.substring(0, 100)}`);
+                }
+              }
+
+              if (!response.ok) {
+                const errorMessage = data?.error || `Server error: ${response.status}`;
+                throw new Error(errorMessage);
+              }
+
+              if (!data?.analysis) {
+                throw new Error("Invalid response structure from server");
+              }
+
+              setResult(data);
+              setActiveTab("results");
+            } catch (err: any) {
+              console.error("Analysis error:", err);
+              setError(err.message || "Failed to analyze audio. Please try again.");
+            } finally {
+              setIsLoading(false);
+            }
+          };
+
+          const createFallbackData = (responseText: string) => {
+            return {
+              transcription: "Transcription unavailable due to processing error.",
+              analysis: {
+                callQuality: "Moderate",
+                noiseLevel: "Medium",
+                clarity: "Medium",
+                issues: [
+                  "Error processing audio file",
+                  "This is fallback data",
+                  `Error details: ${responseText.substring(0, 100)}...`
+                ],
+                recommendations: [
+                  "Try uploading a different audio file",
+                  "Check audio file integrity",
+                  "Ensure clear speech in recording"
+                ]
+              }
+            }
+        } else {
+          throw new Error("Server returned invalid JSON. Please try again.");
         }
-      });
-
-      clearTimeout(timeoutId);
-
-      console.log("Response status:", response.status);
-
-      // Always log the raw response for debugging
-      const responseText = await response.text();
-      console.log("Raw response:", responseText);
-
-      // Try parsing as JSON, but don't throw if it fails
-      let data;
-      try {
-        data = JSON.parse(responseText);
-        console.log("Response data received");
-      } catch (jsonError) {
-        console.error("Failed to parse response as JSON:", jsonError);
-        throw new Error("Server returned invalid JSON. Please try again.");
       }
 
       if (!response.ok && response.status !== 200) {

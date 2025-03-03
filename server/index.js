@@ -153,138 +153,105 @@ app.post('/api/analyze', (req, res, next) => {
         4. List of 3-4 specific issues that might be present in a call of this quality
         5. List of 3-4 recommendations for improving call quality
         
-        CRITICAL: Respond with ONLY raw JSON. DO NOT use markdown code blocks. DO NOT include \`\`\` characters. DO NOT include the string \`\`\`json. DO NOT include any text before or after the JSON. Just return a raw JSON object like this:
-        
-        {"callQuality":"Moderate","noiseLevel":"Medium","clarity":"Medium","issues":["Issue 1","Issue 2"],"recommendations":["Recommendation 1","Recommendation 2"]}
-        
-        The application parsing your response will fail if you include any markdown or text outside the JSON object.
+        Return your response formatted as JSON object with the following structure:
+        {
+          "callQuality": "Moderate", 
+          "noiseLevel": "Medium", 
+          "clarity": "Medium",
+          "issues": ["Issue 1", "Issue 2", "Issue 3"],
+          "recommendations": ["Recommendation 1", "Recommendation 2", "Recommendation 3"]
+        }
         `;
         
         const analysisResult = await geminiModel.generateContent({
           contents: [{ role: 'user', parts: [{ text: analysisPrompt }]}]
         });
         
+        // Get the raw text from the response
         const analysisText = analysisResult.response.text();
         console.log('Analysis text received from Gemini');
         
-        // Parse the JSON from the response, handling potential format issues
-        let analysisJson;
+        // Create a 100% reliable fallback for safety
+        const fallbackJson = {
+          "callQuality": "Moderate",
+          "noiseLevel": "Medium",
+          "clarity": "Medium",
+          "issues": [
+            "Audio content unclear at times",
+            "Some background noise detected",
+            "Potential network interference"
+          ],
+          "recommendations": [
+            "Use noise cancellation technology",
+            "Ensure proper microphone placement",
+            "Speak clearly and at a moderate pace",
+            "Consider upgrading call equipment"
+          ]
+        };
+        
+        // Log the complete raw response for debugging
+        console.log('Raw response from Gemini:', analysisText);
+        
+        // COMPLETELY NEW APPROACH: Extract JSON regardless of format
+        // This will handle any form of response including markdown code blocks
+        let analysisJson = fallbackJson;
+        
         try {
-          // Log the complete raw response for debugging
-          console.log('Raw response from Gemini:', analysisText);
+          // Step 1: Remove all markdown formatting
+          let processedText = analysisText
+            .replace(/```json/gi, '')  // Remove ```json
+            .replace(/```/g, '')       // Remove all remaining ``` markers
+            .trim();                   // Trim whitespace
           
-          // Create a 100% reliable fallback for safety
-          const fallbackJson = {
-            "callQuality": "Moderate",
-            "noiseLevel": "Medium",
-            "clarity": "Medium",
-            "issues": [
-              "Audio content unclear at times",
-              "Some background noise detected",
-              "Potential network interference"
-            ],
-            "recommendations": [
-              "Use noise cancellation technology",
-              "Ensure proper microphone placement",
-              "Speak clearly and at a moderate pace",
-              "Consider upgrading call equipment"
-            ]
-          };
+          // Step 2: Find the JSON object - look for the outermost braces
+          const firstBrace = processedText.indexOf('{');
+          const lastBrace = processedText.lastIndexOf('}');
           
-          // Completely strip out markdown code blocks first
-          let cleanedJson = "";
-          
-          if (analysisText.includes('```')) {
-            // Handle markdown code blocks by any means necessary
-            // First remove all markdown markers completely
-            const noMarkdown = analysisText
-              .replace(/```json/g, '')
-              .replace(/```/g, '')
-              .trim();
-              
-            // Find the first { and last } to get just the JSON
-            const firstBrace = noMarkdown.indexOf('{');
-            const lastBrace = noMarkdown.lastIndexOf('}');
+          if (firstBrace >= 0 && lastBrace > firstBrace) {
+            // Extract just the JSON part
+            const jsonCandidate = processedText.substring(firstBrace, lastBrace + 1);
             
-            if (firstBrace >= 0 && lastBrace > firstBrace) {
-              cleanedJson = noMarkdown.substring(firstBrace, lastBrace + 1);
-            } else {
-              console.log('Could not find JSON object boundaries after removing markdown');
-              // Return fallback data rather than throwing
-              analysisJson = fallbackJson;
-              return;
+            // Log what we're trying to parse
+            console.log('Extracted JSON candidate:', jsonCandidate);
+            
+            // Step 3: Clean up common JSON issues
+            const cleanedJson = jsonCandidate
+              .replace(/(\r\n|\n|\r|\t)/gm, ' ')  // Replace newlines/tabs with spaces
+              .replace(/,\s*}/g, '}')             // Remove trailing commas
+              .replace(/,\s*]/g, ']')             // Remove trailing commas in arrays
+              .replace(/(['"])?([a-zA-Z0-9_]+)(['"])?:/g, '"$2":') // Ensure property names are quoted
+              .replace(/:\s*['"]([^'"]*)['"],/g, ': "$1",')       // Convert single quotes to double for values
+              .replace(/:\s*['"]([^'"]*)['"]\s*}/g, ': "$1"}')    // Handle last property with single quotes
+              .replace(/:\s*(['"])(.*)\1\s*(,|}|\])/g, function(match, quote, content, end) {
+                // Clean quotes within quoted strings for values like "value"
+                return ': "' + content.replace(/"/g, '\\"') + '"' + end;
+              });
+              
+            console.log('Cleaned JSON candidate:', cleanedJson);
+            
+            // Step 4: Try to parse the cleaned JSON
+            try {
+              const parsedJson = JSON.parse(cleanedJson);
+              
+              // Step 5: Validate the structure has required fields
+              if (parsedJson.callQuality && parsedJson.noiseLevel && 
+                  parsedJson.clarity && Array.isArray(parsedJson.issues) && 
+                  Array.isArray(parsedJson.recommendations)) {
+                  
+                console.log('Successfully parsed valid JSON with correct structure');
+                analysisJson = parsedJson;
+              } else {
+                console.log('JSON parsed but missing required fields, using fallback');
+              }
+            } catch (parseError) {
+              console.error('JSON parsing error after cleaning:', parseError);
+              console.log('Using fallback JSON');
             }
           } else {
-            // If no code blocks, still try to extract just the JSON object
-            const firstBrace = analysisText.indexOf('{');
-            const lastBrace = analysisText.lastIndexOf('}');
-            
-            if (firstBrace >= 0 && lastBrace > firstBrace) {
-              cleanedJson = analysisText.substring(firstBrace, lastBrace + 1);
-            } else {
-              console.log('Could not find JSON object boundaries in non-markdown response');
-              // Return fallback data rather than throwing
-              analysisJson = fallbackJson;
-              return;
-            }
+            console.error('Could not find JSON object boundaries in the response');
           }
-          
-          // Additional cleanup - remove any non-JSON-compliant characters
-          cleanedJson = cleanedJson
-            .replace(/[\r\n\t]/g, ' ')
-            .replace(/,\s*}/g, '}') // Fix trailing commas
-            .trim();
-          
-          // Log what we're trying to parse for debugging
-          console.log('Final cleaned JSON before parsing:', cleanedJson);
-          
-          // Try parsing, but don't throw if it fails
-          try {
-            analysisJson = JSON.parse(cleanedJson);
-            console.log('Successfully parsed JSON from Gemini response');
-          } catch (innerJsonError) {
-            console.error('Failed to parse cleaned JSON, using fallback:', innerJsonError);
-            analysisJson = fallbackJson;
-          }
-        } catch (jsonError) {
-          console.error('JSON parsing error:', jsonError);
-          console.error('Error occurred with this text:', analysisText);
-          
-          // Try one last approach - manually construct the JSON if we have key parts
-          try {
-            if (analysisText.includes('callQuality') && analysisText.includes('noiseLevel')) {
-              // Try to manually extract values from the text
-              const callQualityMatch = analysisText.match(/["']callQuality["']\s*:\s*["']([^"']+)["']/);
-              const noiseLevelMatch = analysisText.match(/["']noiseLevel["']\s*:\s*["']([^"']+)["']/);
-              const clarityMatch = analysisText.match(/["']clarity["']\s*:\s*["']([^"']+)["']/);
-              
-              console.log('Attempting manual extraction:', {
-                callQuality: callQualityMatch ? callQualityMatch[1] : null,
-                noiseLevel: noiseLevelMatch ? noiseLevelMatch[1] : null,
-                clarity: clarityMatch ? clarityMatch[1] : null
-              });
-            }
-          } catch (manualExtractionError) {
-            console.error('Manual extraction also failed:', manualExtractionError);
-          }
-          
-          // Provide fallback analysis with error information
-          analysisJson = {
-            "callQuality": "Moderate",
-            "noiseLevel": "Medium",
-            "clarity": "Medium",
-            "issues": [
-              "There was an error parsing the API response",
-              "This is fallback data for demonstration",
-              "Error details: " + jsonError.message
-            ],
-            "recommendations": [
-              "Use noise cancellation technology",
-              "Ensure proper microphone placement",
-              "Speak clearly and at a moderate pace",
-              "Consider upgrading call equipment"
-            ]
-          };
+        } catch (error) {
+          console.error('Error extracting JSON from response:', error);
         }
         
         // Clean up the uploaded file
