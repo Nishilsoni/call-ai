@@ -153,10 +153,24 @@ function App() {
       if (err.name === 'AbortError') {
         setError("Request timed out. Please try again with a smaller file or check your internet connection.");
       } else {
-        setError(err instanceof Error ? err.message : "Failed to analyze audio. Please try again.");
+        // Provide more detailed error information including the server error if available
+        let errorMessage = "Failed to analyze audio. Please try again.";
+        
+        if (err.message && err.message.includes("Server returned error:")) {
+          errorMessage = err.message;
+        } else if (err instanceof Error) {
+          errorMessage = err.message;
+        }
+        
+        setError(errorMessage);
+        
+        // Log server error details if available
+        if (err.serverError) {
+          console.error("Server error details:", err.serverError);
+        }
       }
       
-      // For debugging only
+      // Log file info for debugging
       console.log("File info:", file ? {
         name: file.name,
         type: file.type,

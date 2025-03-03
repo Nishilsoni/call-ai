@@ -153,7 +153,7 @@ app.post('/api/analyze', (req, res, next) => {
         4. List of 3-4 specific issues that might be present in a call of this quality
         5. List of 3-4 recommendations for improving call quality
         
-        Format the response as a JSON object with the following structure:
+        IMPORTANT: Your response must be ONLY a valid JSON object without any other text, markdown, or formatting. Do not include \`\`\`json or any other markdown. Return only the raw JSON:
         {
           "callQuality": "string",
           "noiseLevel": "string",
@@ -173,22 +173,33 @@ app.post('/api/analyze', (req, res, next) => {
         // Parse the JSON from the response, handling potential format issues
         let analysisJson;
         try {
+          // Log the complete raw response for debugging
+          console.log('Raw response from Gemini:', analysisText);
+          
           // Handle cases where there might be markdown code blocks in the response
           let cleanedJson = analysisText;
           
-          console.log('Raw response from Gemini:', analysisText.substring(0, 100) + '...');
-          
           // Step 1: First try to extract JSON from markdown code blocks
           if (analysisText.includes('```')) {
+            // Try different patterns to extract JSON from code blocks
+            let jsonContent = null;
+            
+            // Pattern 1: ```json {...} ```
             const jsonBlockMatch = analysisText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
             if (jsonBlockMatch && jsonBlockMatch[1]) {
-              cleanedJson = jsonBlockMatch[1].trim();
-            } else {
-              // If specific pattern fails, try a more generic approach
-              cleanedJson = analysisText
+              jsonContent = jsonBlockMatch[1].trim();
+            }
+            
+            // Pattern 2: If the first pattern fails, try removing all ``` markers
+            if (!jsonContent) {
+              jsonContent = analysisText
                 .replace(/```json/g, '')
                 .replace(/```/g, '')
                 .trim();
+            }
+            
+            if (jsonContent) {
+              cleanedJson = jsonContent;
             }
           }
           
@@ -198,30 +209,54 @@ app.post('/api/analyze', (req, res, next) => {
           
           if (openBraceIndex >= 0 && closeBraceIndex >= 0 && closeBraceIndex > openBraceIndex) {
             cleanedJson = cleanedJson.substring(openBraceIndex, closeBraceIndex + 1);
+          } else {
+            console.error('Could not find valid JSON object boundaries in:', cleanedJson);
+            throw new Error('Could not extract valid JSON object from response');
           }
           
           // Step 3: Clean any remaining non-JSON characters
           cleanedJson = cleanedJson.replace(/[\r\n\t]/g, ' ').trim();
           
-          // Step 4: Final validation before parsing
+          // Step 4: Final validation and logging before parsing
           if (!cleanedJson.startsWith('{') || !cleanedJson.endsWith('}')) {
+            console.error('Invalid JSON format after cleaning:', cleanedJson);
             throw new Error('Could not extract valid JSON object from response');
           }
           
-          console.log('Cleaned JSON for parsing:', cleanedJson.substring(0, 100) + (cleanedJson.length > 100 ? '...' : ''));
+          console.log('Cleaned JSON for parsing:', cleanedJson);
           analysisJson = JSON.parse(cleanedJson);
           console.log('Successfully parsed JSON from Gemini response');
         } catch (jsonError) {
           console.error('JSON parsing error:', jsonError);
-          // Provide fallback analysis if JSON parsing fails
+          console.error('Error occurred with this text:', analysisText);
+          
+          // Try one last approach - manually construct the JSON if we have key parts
+          try {
+            if (analysisText.includes('callQuality') && analysisText.includes('noiseLevel')) {
+              // Try to manually extract values from the text
+              const callQualityMatch = analysisText.match(/["']callQuality["']\s*:\s*["']([^"']+)["']/);
+              const noiseLevelMatch = analysisText.match(/["']noiseLevel["']\s*:\s*["']([^"']+)["']/);
+              const clarityMatch = analysisText.match(/["']clarity["']\s*:\s*["']([^"']+)["']/);
+              
+              console.log('Attempting manual extraction:', {
+                callQuality: callQualityMatch ? callQualityMatch[1] : null,
+                noiseLevel: noiseLevelMatch ? noiseLevelMatch[1] : null,
+                clarity: clarityMatch ? clarityMatch[1] : null
+              });
+            }
+          } catch (manualExtractionError) {
+            console.error('Manual extraction also failed:', manualExtractionError);
+          }
+          
+          // Provide fallback analysis with error information
           analysisJson = {
             "callQuality": "Moderate",
             "noiseLevel": "Medium",
             "clarity": "Medium",
             "issues": [
-              "Background noise detected",
-              "Occasional voice distortion",
-              "Some parts of the conversation are unclear"
+              "There was an error parsing the API response",
+              "This is fallback data for demonstration",
+              "Error details: " + jsonError.message
             ],
             "recommendations": [
               "Use noise cancellation technology",
