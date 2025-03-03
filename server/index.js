@@ -269,7 +269,13 @@ app.post('/api/analyze', (req, res) => {
 // Global error handler to prevent 500 errors from reaching clients
 app.use((err, req, res, next) => {
   console.error('Global error handler caught:', err);
-  res.status(200).json(FALLBACK_DATA);
+  // Always return 200 status with fallback data
+  if (!res.headersSent) {
+    res.status(200).json({
+      ...FALLBACK_DATA,
+      _debug: { error: err.message || 'Unknown server error' }
+    });
+  }
 });
 
 // In development mode, don't try to serve static files from dist
