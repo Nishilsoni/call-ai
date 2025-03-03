@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from "react";
 import {
   Upload,
@@ -82,94 +83,89 @@ function App() {
     fileInputRef.current?.click();
   };
 
-          const handleSubmit = async (e: React.FormEvent) => {
-            e.preventDefault();
+  // Helper function to create fallback data when server errors occur
+  const createFallbackData = (responseText: string) => {
+    return {
+      transcription: "Transcription unavailable due to processing error.",
+      analysis: {
+        callQuality: "Moderate",
+        noiseLevel: "Medium",
+        clarity: "Medium",
+        issues: [
+          "Error processing audio file",
+          "This is fallback data",
+          `Error details: ${responseText.substring(0, 100)}...`
+        ],
+        recommendations: [
+          "Try uploading a different audio file",
+          "Check audio file integrity",
+          "Ensure clear speech in recording"
+        ]
+      }
+    };
+  };
 
-            if (!file) {
-              setError("Please select an audio file");
-              return;
-            }
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
 
-            setIsLoading(true);
-            setError(null);
-            setResult(null);
+    if (!file) {
+      setError("Please select an audio file");
+      return;
+    }
 
-            const formData = new FormData();
-            formData.append("audioFile", file);
-            formData.append("transcribe", transcribe.toString());
+    setIsLoading(true);
+    setError(null);
+    setResult(null);
 
-            try {
-              const controller = new AbortController();
-              const timeoutId = setTimeout(() => controller.abort(), 60000);
+    const formData = new FormData();
+    formData.append("audioFile", file);
+    formData.append("transcribe", transcribe.toString());
 
-              const response = await fetch("/api/analyze", {
-                method: "POST",
-                body: formData,
-                signal: controller.signal,
-                headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
-              });
+    try {
+      console.log("Uploading file:", file.name, "Size:", file.size, "Type:", file.type);
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000);
 
-              clearTimeout(timeoutId);
-              const responseText = await response.text();
+      const response = await fetch("/api/analyze", {
+        method: "POST",
+        body: formData,
+        signal: controller.signal,
+        headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
+      });
 
-              // Clean response text from Markdown formatting
-              let cleanedResponse = responseText
-                .replace(/```json/g, '')
-                .replace(/```/g, '')
-                .trim();
+      clearTimeout(timeoutId);
+      console.log("Response status:", response.status);
+      console.log("Response data received");
 
-              let data;
-              try {
-                data = JSON.parse(cleanedResponse);
-              } catch (jsonError) {
-                // Handle invalid JSON format
-                if (responseText.includes("Failed to process audio file")) {
-                  data = createFallbackData(responseText);
-                } else {
-                  throw new Error(`Server returned invalid response: ${cleanedResponse.substring(0, 100)}`);
-                }
-              }
+      // Get response as text first to handle potential JSON parsing issues
+      const responseText = await response.text();
 
-              if (!response.ok) {
-                const errorMessage = data?.error || `Server error: ${response.status}`;
-                throw new Error(errorMessage);
-              }
+      // Clean response text from Markdown formatting
+      let cleanedResponse = responseText
+        .replace(/```json/g, '')
+        .replace(/```/g, '')
+        .trim();
 
-              if (!data?.analysis) {
-                throw new Error("Invalid response structure from server");
-              }
-
-              setResult(data);
-              setActiveTab("results");
-            } catch (err: any) {
-              console.error("Analysis error:", err);
-              setError(err.message || "Failed to analyze audio. Please try again.");
-            } finally {
-              setIsLoading(false);
-            }
-          };
-
-          const createFallbackData = (responseText: string) => {
-            return {
-              transcription: "Transcription unavailable due to processing error.",
-              analysis: {
-                callQuality: "Moderate",
-                noiseLevel: "Medium",
-                clarity: "Medium",
-                issues: [
-                  "Error processing audio file",
-                  "This is fallback data",
-                  `Error details: ${responseText.substring(0, 100)}...`
-                ],
-                recommendations: [
-                  "Try uploading a different audio file",
-                  "Check audio file integrity",
-                  "Ensure clear speech in recording"
-                ]
-              }
-            }
+      let data;
+      try {
+        data = JSON.parse(cleanedResponse);
+      } catch (jsonError) {
+        console.error("Server returned error:", responseText);
+        console.error("Error details:", jsonError);
+        
+        // Log file info for debugging
+        console.log("File info:", file ? {
+          name: file.name,
+          type: file.type,
+          size: file.size
+        } : 'No file');
+        
+        // Use fallback data
+        if (responseText.includes("Failed to process audio file")) {
+          throw new Error(`Server returned error: ${responseText}`);
         } else {
-          throw new Error("Server returned invalid JSON. Please try again.");
+          throw new Error(`Server returned invalid JSON: ${cleanedResponse.substring(0, 100)}`);
         }
       }
 

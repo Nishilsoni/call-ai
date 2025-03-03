@@ -1,9 +1,9 @@
-
 import express from 'express';
 import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
 import cors from 'cors';
+import bodyParser from 'body-parser'; // Added bodyParser for urlencoded body parsing
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 // Check for required directories
@@ -12,7 +12,7 @@ const ensureDirectoriesExist = () => {
     path.join(process.cwd(), 'uploads'),
     path.join(process.cwd(), 'dist')
   ];
-  
+
   for (const dir of dirs) {
     if (!fs.existsSync(dir)) {
       console.log(`Creating directory: ${dir}`);
@@ -29,6 +29,15 @@ const port = process.env.PORT || 3000;
 // Enable CORS and JSON body parsing
 app.use(cors());
 app.use(express.json());
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
+
+// Add request logging middleware
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+  next();
+});
+
 
 // Set up Gemini API
 const GEMINI_API_KEY = 'AIzaSyBD5MlVkd78waOrDFMNyjnZ3l9pcFOvfXY';
@@ -67,39 +76,15 @@ if (!fs.existsSync(uploadDir)) {
 }
 
 // Analyze audio call quality
-// Add global error handler middleware
-app.use((err, req, res, next) => {
-  console.error('Global error handler caught:', err);
-  res.status(200).json({
-    transcription: "An error occurred while processing your request.",
-    analysis: {
-      "callQuality": "Moderate",
-      "noiseLevel": "Medium",
-      "clarity": "Medium",
-      "issues": [
-        "There was an internal server error",
-        "This is fallback data for demonstration",
-        "Error details: " + (err.message || "Unknown error")
-      ],
-      "recommendations": [
-        "Try uploading a different audio file",
-        "Check that the audio file is not corrupted",
-        "The application is still functioning with demo data"
-      ]
-    },
-    _debug: { error: err.message || "Unknown error" }
-  });
-});
-
 app.post('/api/analyze', (req, res, next) => {
   console.log('Received /api/analyze request');
-  
+
   upload.single('audioFile')(req, res, async (err) => {
     if (err) {
       console.error('Upload error:', err);
       return res.status(400).json({ error: err.message });
     }
-    
+
     if (!req.file) {
       console.error('No file in request');
       return res.status(400).json({ error: 'No audio file provided' });
@@ -108,13 +93,13 @@ app.post('/api/analyze', (req, res, next) => {
     try {
       const filePath = req.file.path;
       const shouldTranscribe = req.body.transcribe === 'true';
-      
+
       console.log('Processing file:', req.file.originalname);
       console.log('File path:', filePath);
       console.log('File size:', req.file.size);
       console.log('File type:', req.file.mimetype);
       console.log('Should transcribe:', shouldTranscribe);
-      
+
       // Create a mock transcription if requested (for demo)
       let transcription = null;
       if (shouldTranscribe) {
@@ -133,26 +118,26 @@ app.post('/api/analyze', (req, res, next) => {
           transcription = "An error occurred while generating the transcription. This is a fallback transcript of a call between a customer and support agent discussing internet connectivity issues.";
         }
       }
-      
+
       // Use Gemini API to analyze the call quality
       console.log('Analyzing call quality with Gemini API...');
       try {
         const geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
-        
+
         const analysisPrompt = `
         You are an AI specialist in analyzing call center audio quality. 
         Based on an audio file with the following characteristics:
         - File name: ${req.file.originalname}
         - File size: ${req.file.size} bytes
         - File type: ${req.file.mimetype}
-        
+
         Create a detailed call quality analysis report with the following components:
         1. Overall call quality rating (Good, Moderate, or Poor)
         2. Noise level assessment (Low, Medium, or High)
         3. Clarity rating (High, Medium, or Low)
         4. List of 3-4 specific issues that might be present in a call of this quality
         5. List of 3-4 recommendations for improving call quality
-        
+
         Return your response formatted as JSON object with the following structure:
         {
           "callQuality": "Moderate", 
@@ -162,15 +147,15 @@ app.post('/api/analyze', (req, res, next) => {
           "recommendations": ["Recommendation 1", "Recommendation 2", "Recommendation 3"]
         }
         `;
-        
+
         const analysisResult = await geminiModel.generateContent({
           contents: [{ role: 'user', parts: [{ text: analysisPrompt }]}]
         });
-        
+
         // Get the raw text from the response
         const analysisText = analysisResult.response.text();
         console.log('Analysis text received from Gemini');
-        
+
         // Create a 100% reliable fallback for safety
         const fallbackJson = {
           "callQuality": "Moderate",
@@ -188,32 +173,32 @@ app.post('/api/analyze', (req, res, next) => {
             "Consider upgrading call equipment"
           ]
         };
-        
+
         // Log the complete raw response for debugging
         console.log('Raw response from Gemini:', analysisText);
-        
+
         // COMPLETELY NEW APPROACH: Extract JSON regardless of format
         // This will handle any form of response including markdown code blocks
         let analysisJson = fallbackJson;
-        
+
         try {
           // Step 1: Remove all markdown formatting
           let processedText = analysisText
             .replace(/```json/gi, '')  // Remove ```json
             .replace(/```/g, '')       // Remove all remaining ``` markers
             .trim();                   // Trim whitespace
-          
+
           // Step 2: Find the JSON object - look for the outermost braces
           const firstBrace = processedText.indexOf('{');
           const lastBrace = processedText.lastIndexOf('}');
-          
+
           if (firstBrace >= 0 && lastBrace > firstBrace) {
             // Extract just the JSON part
             const jsonCandidate = processedText.substring(firstBrace, lastBrace + 1);
-            
+
             // Log what we're trying to parse
             console.log('Extracted JSON candidate:', jsonCandidate);
-            
+
             // Step 3: Clean up common JSON issues
             const cleanedJson = jsonCandidate
               .replace(/(\r\n|\n|\r|\t)/gm, ' ')  // Replace newlines/tabs with spaces
@@ -226,18 +211,18 @@ app.post('/api/analyze', (req, res, next) => {
                 // Clean quotes within quoted strings for values like "value"
                 return ': "' + content.replace(/"/g, '\\"') + '"' + end;
               });
-              
+
             console.log('Cleaned JSON candidate:', cleanedJson);
-            
+
             // Step 4: Try to parse the cleaned JSON
             try {
               const parsedJson = JSON.parse(cleanedJson);
-              
+
               // Step 5: Validate the structure has required fields
               if (parsedJson.callQuality && parsedJson.noiseLevel && 
                   parsedJson.clarity && Array.isArray(parsedJson.issues) && 
                   Array.isArray(parsedJson.recommendations)) {
-                  
+
                 console.log('Successfully parsed valid JSON with correct structure');
                 analysisJson = parsedJson;
               } else {
@@ -253,7 +238,7 @@ app.post('/api/analyze', (req, res, next) => {
         } catch (error) {
           console.error('Error extracting JSON from response:', error);
         }
-        
+
         // Clean up the uploaded file
         try {
           if (fs.existsSync(filePath)) {
@@ -264,7 +249,7 @@ app.post('/api/analyze', (req, res, next) => {
           console.error('Error cleaning up file:', cleanupError);
           // Continue anyway, this shouldn't stop the response
         }
-        
+
         // Return the analysis results
         console.log('Sending successful response with analysis');
         return res.status(200).json({
@@ -296,7 +281,7 @@ app.post('/api/analyze', (req, res, next) => {
       }
     } catch (error) {
       console.error('Error processing audio file:', error);
-      
+
       // Clean up file if it exists despite the error
       try {
         if (req.file && req.file.path && fs.existsSync(req.file.path)) {
@@ -305,7 +290,7 @@ app.post('/api/analyze', (req, res, next) => {
       } catch (cleanupError) {
         console.error('Error cleaning up file after processing error:', cleanupError);
       }
-      
+
       // ALWAYS return 200 status with fallback data - never return 500 to the client
       console.log('Sending fallback response due to error');
       return res.status(200).json({
