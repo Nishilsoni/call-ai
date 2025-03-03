@@ -124,16 +124,29 @@ app.post('/api/analyze', upload.single('audioFile'), async (req, res) => {
   }
 });
 
-// Serve static files from the dist directory (for production)
-app.use(express.static('dist'));
+// In development mode, don't try to serve static files from dist
+if (fs.existsSync(path.join(process.cwd(), 'dist'))) {
+  // Serve static files from the dist directory (for production)
+  app.use(express.static('dist'));
 
-// Catch-all route to serve the SPA
-app.get('*', (req, res) => {
-  res.sendFile(path.join(process.cwd(), 'dist', 'index.html'));
-});
+  // Catch-all route to serve the SPA
+  app.get('*', (req, res) => {
+    if (fs.existsSync(path.join(process.cwd(), 'dist', 'index.html'))) {
+      res.sendFile(path.join(process.cwd(), 'dist', 'index.html'));
+    } else {
+      res.status(404).send('Frontend not built yet. Please run "npm run build" first for production.');
+    }
+  });
+} else {
+  // Development mode - API only
+  app.get('/', (req, res) => {
+    res.send('API server is running. Frontend not built yet.');
+  });
+}
 
 app.listen(port, '0.0.0.0', () => {
   console.log(`Server is running on port ${port}`);
+  console.log(`API available at http://0.0.0.0:${port}/api/analyze`);
 });
 
 export default app;
