@@ -144,35 +144,23 @@ function App() {
       console.log("Response status:", response.status);
       console.log("Response data received");
 
-      // Get response as text first to handle potential JSON parsing issues
-      const responseText = await response.text();
-
-      // Improved cleaning of response text from Markdown formatting
-      let cleanedResponse = responseText;
-
-      // Check if response is wrapped in markdown code blocks
-      if (responseText.includes("```json")) {
-        // Extract the content between ```json and ``` markers
-        const jsonMatch = responseText.match(/```json\s*([\s\S]*?)\s*```/);
-        if (jsonMatch && jsonMatch[1]) {
-          cleanedResponse = jsonMatch[1].trim();
-        } else {
-          // If the pattern doesn't match exactly, fall back to basic replacement
-          cleanedResponse = responseText
-            .replace(/```json/g, "")
-            .replace(/```/g, "")
-            .trim();
-        }
-      }
-
+      // Direct JSON parsing - the server now ALWAYS returns valid JSON with 200 status
       let data;
       try {
-        data = JSON.parse(cleanedResponse);
+        data = await response.json();
+        
+        // Check if we have the expected data structure
+        if (data && data.analysis) {
+          setResult(data);
+          setActiveTab("results");
+          console.log("Response processed successfully");
+        } else {
+          console.error("Invalid response format:", data);
+          throw new Error("Server returned incomplete data. Please try again.");
+        }
       } catch (jsonError) {
-        console.error("Failed to parse JSON:", jsonError);
-        console.error("Raw response:", responseText);
-        console.error("Cleaned response:", cleanedResponse);
-
+        console.error("JSON parsing error:", jsonError);
+        
         // Log file info for debugging
         console.log(
           "File info:",
@@ -184,34 +172,8 @@ function App() {
               }
             : "No file",
         );
-
-        // Use fallback data
-        if (responseText.includes("Failed to process audio file")) {
-          throw new Error(`Server returned error: ${responseText}`);
-        } else {
-          // Create a more detailed error message
-          throw new Error(
-            `Invalid JSON response: ${jsonError.message.substring(0, 100)}`,
-          );
-        }
-      }
-
-      if (!response.ok && response.status !== 200) {
-        // If server returned an error status code
-        const errorMessage = data?.error || `Server error: ${response.status}`;
-        console.error("Server returned error:", errorMessage);
-        throw new Error(errorMessage);
-      }
-
-      console.log("Response processed successfully");
-
-      // Check if we have the expected data structure
-      if (data && data.analysis) {
-        setResult(data);
-        setActiveTab("results");
-      } else {
-        console.error("Invalid response format:", data);
-        throw new Error("Server returned incomplete data. Please try again.");
+        
+        throw new Error("Failed to process response from server. Please try again.");
       }
     } catch (err: any) {
       console.error("Error details:", err);
@@ -221,21 +183,14 @@ function App() {
           "Request timed out. Please try again with a smaller file or check your internet connection.",
         );
       } else {
-        // Provide more detailed error information including the server error if available
+        // Provide more detailed error information
         let errorMessage = "Failed to analyze audio. Please try again.";
 
-        if (err.message && err.message.includes("Server returned error:")) {
-          errorMessage = err.message;
-        } else if (err instanceof Error) {
+        if (err instanceof Error) {
           errorMessage = err.message;
         }
 
         setError(errorMessage);
-
-        // Log server error details if available
-        if (err.serverError) {
-          console.error("Server error details:", err.serverError);
-        }
       }
 
       // Log file info for debugging
