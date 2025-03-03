@@ -8,4 +8,19 @@ channel = "stable-24_05"
 run = ["sh", "-c", "npm run dev"]
 
 [[ports]]
+localPort = 3000
+externalPort = 80
+
+[[ports]]
 localPort = 5173
+
+[workflows]
+runButton = "Start Development"
+
+[[workflows.workflow]]
+name = "Start Development"
+author = 40159878
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run dev & npm run server"
