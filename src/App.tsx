@@ -1,4 +1,3 @@
-
 import React, { useState, useRef } from "react";
 import {
   Upload,
@@ -94,14 +93,14 @@ function App() {
         issues: [
           "Error processing audio file",
           "This is fallback data",
-          `Error details: ${responseText.substring(0, 100)}...`
+          `Error details: ${responseText.substring(0, 100)}...`,
         ],
         recommendations: [
           "Try uploading a different audio file",
           "Check audio file integrity",
-          "Ensure clear speech in recording"
-        ]
-      }
+          "Ensure clear speech in recording",
+        ],
+      },
     };
   };
 
@@ -122,8 +121,15 @@ function App() {
     formData.append("transcribe", transcribe.toString());
 
     try {
-      console.log("Uploading file:", file.name, "Size:", file.size, "Type:", file.type);
-      
+      console.log(
+        "Uploading file:",
+        file.name,
+        "Size:",
+        file.size,
+        "Type:",
+        file.type,
+      );
+
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 60000);
 
@@ -131,7 +137,7 @@ function App() {
         method: "POST",
         body: formData,
         signal: controller.signal,
-        headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
+        headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
       });
 
       clearTimeout(timeoutId);
@@ -141,31 +147,52 @@ function App() {
       // Get response as text first to handle potential JSON parsing issues
       const responseText = await response.text();
 
-      // Clean response text from Markdown formatting
-      let cleanedResponse = responseText
-        .replace(/```json/g, '')
-        .replace(/```/g, '')
-        .trim();
+      // Improved cleaning of response text from Markdown formatting
+      let cleanedResponse = responseText;
+
+      // Check if response is wrapped in markdown code blocks
+      if (responseText.includes("```json")) {
+        // Extract the content between ```json and ``` markers
+        const jsonMatch = responseText.match(/```json\s*([\s\S]*?)\s*```/);
+        if (jsonMatch && jsonMatch[1]) {
+          cleanedResponse = jsonMatch[1].trim();
+        } else {
+          // If the pattern doesn't match exactly, fall back to basic replacement
+          cleanedResponse = responseText
+            .replace(/```json/g, "")
+            .replace(/```/g, "")
+            .trim();
+        }
+      }
 
       let data;
       try {
         data = JSON.parse(cleanedResponse);
       } catch (jsonError) {
-        console.error("Server returned error:", responseText);
-        console.error("Error details:", jsonError);
-        
+        console.error("Failed to parse JSON:", jsonError);
+        console.error("Raw response:", responseText);
+        console.error("Cleaned response:", cleanedResponse);
+
         // Log file info for debugging
-        console.log("File info:", file ? {
-          name: file.name,
-          type: file.type,
-          size: file.size
-        } : 'No file');
-        
+        console.log(
+          "File info:",
+          file
+            ? {
+                name: file.name,
+                type: file.type,
+                size: file.size,
+              }
+            : "No file",
+        );
+
         // Use fallback data
         if (responseText.includes("Failed to process audio file")) {
           throw new Error(`Server returned error: ${responseText}`);
         } else {
-          throw new Error(`Server returned invalid JSON: ${cleanedResponse.substring(0, 100)}`);
+          // Create a more detailed error message
+          throw new Error(
+            `Invalid JSON response: ${jsonError.message.substring(0, 100)}`,
+          );
         }
       }
 
@@ -189,8 +216,10 @@ function App() {
     } catch (err: any) {
       console.error("Error details:", err);
 
-      if (err.name === 'AbortError') {
-        setError("Request timed out. Please try again with a smaller file or check your internet connection.");
+      if (err.name === "AbortError") {
+        setError(
+          "Request timed out. Please try again with a smaller file or check your internet connection.",
+        );
       } else {
         // Provide more detailed error information including the server error if available
         let errorMessage = "Failed to analyze audio. Please try again.";
@@ -210,11 +239,16 @@ function App() {
       }
 
       // Log file info for debugging
-      console.log("File info:", file ? {
-        name: file.name,
-        type: file.type,
-        size: file.size
-      } : 'No file');
+      console.log(
+        "File info:",
+        file
+          ? {
+              name: file.name,
+              type: file.type,
+              size: file.size,
+            }
+          : "No file",
+      );
     } finally {
       setIsLoading(false);
     }
