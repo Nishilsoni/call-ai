@@ -132,8 +132,15 @@ function App() {
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 60000);
+      
+      // Determine the correct API URL based on environment
+      const apiUrl = window.location.hostname === 'localhost' 
+          ? 'http://localhost:3000/api/analyze'
+          : '/api/analyze';
+      
+      console.log("Sending request to API URL:", apiUrl);
 
-      const response = await fetch("/api/analyze", {
+      const response = await fetch(apiUrl, {
         method: "POST",
         body: formData,
         signal: controller.signal,
@@ -144,22 +151,31 @@ function App() {
       console.log("Response status:", response.status);
       console.log("Response data received");
 
-      // Direct JSON parsing - the server now ALWAYS returns valid JSON with 200 status
+      // Get response text first to handle different formats
       let data;
       try {
-        data = await response.json();
-
-        // Check if we have the expected data structure
-        if (data && data.analysis) {
-          setResult(data);
-          setActiveTab("results");
-          console.log("Response processed successfully");
-        } else {
-          console.error("Invalid response format:", data);
-          throw new Error("Server returned incomplete data. Please try again.");
+        const responseText = await response.text();
+        console.log("Raw server response:", responseText.substring(0, 200) + "...");
+        
+        try {
+          // Try to parse as JSON
+          data = JSON.parse(responseText);
+          
+          // Check if we have the expected data structure
+          if (data && data.analysis) {
+            setResult(data);
+            setActiveTab("results");
+            console.log("Response processed successfully");
+          } else {
+            console.error("Invalid response format:", data);
+            throw new Error("Server returned incomplete data. Please try again.");
+          }
+        } catch (parseError) {
+          console.error("JSON parsing error:", parseError);
+          throw new Error("Failed to parse server response. Please try again.");
         }
-      } catch (jsonError) {
-        console.error("JSON parsing error:", jsonError);
+      } catch (responseError) {
+        console.error("Response handling error:", responseError);
 
         // Log file info for debugging
         console.log(

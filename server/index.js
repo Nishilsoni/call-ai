@@ -184,12 +184,14 @@ app.post('/api/analyze', (req, res) => {
           const rawResponse = analysisResult.response.text();
           let cleanedResponse = rawResponse;
           
-          // Remove markdown code blocks if present
-          if (rawResponse.includes("```json")) {
-            const jsonMatch = rawResponse.match(/```json\s*([\s\S]*?)\s*```/);
+          // More robust markdown code block removal
+          if (rawResponse.includes("```")) {
+            // Try to extract JSON from markdown code blocks with or without language indicator
+            const jsonMatch = rawResponse.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
             if (jsonMatch && jsonMatch[1]) {
               cleanedResponse = jsonMatch[1].trim();
             } else {
+              // Fallback: remove all markdown formatting
               cleanedResponse = rawResponse
                 .replace(/```json/g, '')
                 .replace(/```/g, '')
@@ -197,8 +199,30 @@ app.post('/api/analyze', (req, res) => {
             }
           }
           
-          // Parse the cleaned response
-          analysisJson = JSON.parse(cleanedResponse);
+          console.log("Cleaned response before parsing:", cleanedResponse);
+          
+          try {
+            // Parse the cleaned response
+            analysisJson = JSON.parse(cleanedResponse);
+          } catch (jsonError) {
+            console.error("JSON parse error:", jsonError);
+            console.log("Raw response:", rawResponse);
+            console.log("Cleaned response:", cleanedResponse);
+            
+            // Last resort: try to extract JSON with regex
+            const jsonPattern = /\{[\s\S]*\}/;
+            const extractedJson = rawResponse.match(jsonPattern);
+            if (extractedJson) {
+              try {
+                analysisJson = JSON.parse(extractedJson[0]);
+                console.log("Extracted JSON with regex successfully");
+              } catch (e) {
+                throw jsonError; // If this also fails, throw the original error
+              }
+            } else {
+              throw jsonError;
+            }
+          }
           console.log("Successfully parsed Gemini response");
         } catch (e) {
           console.error("Failed to parse Gemini response:", e);
