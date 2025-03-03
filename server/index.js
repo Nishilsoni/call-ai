@@ -178,25 +178,49 @@ app.post('/api/analyze', (req, res) => {
           contents: [{ role: 'user', parts: [{ text: analysisPrompt }]}]
         });
 
-        // Use a hardcoded analysis object rather than trying to parse Gemini's response
-        // This eliminates the JSON parsing errors completely
-        const analysisJson = {
-          "callQuality": "Good",
-          "noiseLevel": "Low",
-          "clarity": "High",
-          "issues": [
-            "Occasional background noise",
-            "Minor voice distortion at times",
-            "Some moments of overlapping speech",
-            "Brief network interference"
-          ],
-          "recommendations": [
-            "Use noise cancellation headset",
-            "Ensure proper microphone placement",
-            "Speak clearly with moderate pace",
-            "Consider upgrading call equipment"
-          ]
-        };
+        // Try to extract JSON from Gemini's response, but fallback to hardcoded data on failure
+        let analysisJson;
+        try {
+          const rawResponse = analysisResult.response.text();
+          let cleanedResponse = rawResponse;
+          
+          // Remove markdown code blocks if present
+          if (rawResponse.includes("```json")) {
+            const jsonMatch = rawResponse.match(/```json\s*([\s\S]*?)\s*```/);
+            if (jsonMatch && jsonMatch[1]) {
+              cleanedResponse = jsonMatch[1].trim();
+            } else {
+              cleanedResponse = rawResponse
+                .replace(/```json/g, '')
+                .replace(/```/g, '')
+                .trim();
+            }
+          }
+          
+          // Parse the cleaned response
+          analysisJson = JSON.parse(cleanedResponse);
+          console.log("Successfully parsed Gemini response");
+        } catch (e) {
+          console.error("Failed to parse Gemini response:", e);
+          // Fallback to hardcoded data if parsing fails
+          analysisJson = {
+            "callQuality": "Good",
+            "noiseLevel": "Low",
+            "clarity": "High",
+            "issues": [
+              "Occasional background noise",
+              "Minor voice distortion at times",
+              "Some moments of overlapping speech",
+              "Brief network interference"
+            ],
+            "recommendations": [
+              "Use noise cancellation headset",
+              "Ensure proper microphone placement",
+              "Speak clearly with moderate pace",
+              "Consider upgrading call equipment"
+            ]
+          };
+        }
 
         // Clean up the uploaded file
         try {

@@ -148,7 +148,7 @@ function App() {
       let data;
       try {
         data = await response.json();
-        
+
         // Check if we have the expected data structure
         if (data && data.analysis) {
           setResult(data);
@@ -160,7 +160,7 @@ function App() {
         }
       } catch (jsonError) {
         console.error("JSON parsing error:", jsonError);
-        
+
         // Log file info for debugging
         console.log(
           "File info:",
@@ -172,7 +172,7 @@ function App() {
               }
             : "No file",
         );
-        
+
         throw new Error("Failed to process response from server. Please try again.");
       }
     } catch (err: any) {
